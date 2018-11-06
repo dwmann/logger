@@ -86,6 +86,10 @@ void logger_write(LOGGER *logger, LOGGER_LEVELS level, const char *source_name, 
 	struct tm *tm_ptr = &tm;
     int len;
 
+    if (logger == NULL) {
+        return;
+    }
+
 	time(&raw_time);
 	gmtime_r(&raw_time, tm_ptr);
 	va_start(ap, format);
