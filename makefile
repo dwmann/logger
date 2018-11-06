@@ -14,5 +14,5 @@ test : $(obj)
 	$(cc) $(cflags) -c -o $@ $<
 
 clean:
-	rm test
-	rm *.o
+	if [ -f test ] ; then rm test ; fi
+	if ls *o 1> /dev/null 2>&1 ; then rm *.o ; fi
