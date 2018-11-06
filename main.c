@@ -18,6 +18,8 @@ int main(int ac, char **av)
 	logger_info(logger, "initializing...");
 	logger_info(logger, "lol");
 term:
-	logger_info(logger, "terminating...");
-	logger_cleanup(logger);
+    if (logger) {
+    	logger_info(logger, "terminating...");
+	    logger_cleanup(logger);
+    }
 }
