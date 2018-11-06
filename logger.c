@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -17,8 +19,8 @@
  * constants
  */
 
-static const int LINE_1_MAX = 100;
-static const int LINE_2_MAX = 2048;
+#define LOGGER_LINE_MIN_SIZE 49 
+#define LOGGER_LINE_MAX_SIZE 2048
 
 static const char const *LEVELS[] = {
 	"ERROR",
@@ -30,60 +32,70 @@ static const char const *LEVELS[] = {
 
 
 /*
- * data
+ * cleanup resources
  */
-
-LOGGER loggerState;
+void logger_cleanup(LOGGER *logger) 
+{
+    if (logger != NULL) {
+        free(logger);
+    }
+}
 
 
 /*
  * initialize logging
  */
-int loggerInit(short int level, const char *appName) {
-	memset(&loggerState, 0, sizeof(LOGGER));
-	loggerState.logLevel = level;
-	loggerState.pid = getpid();
-	loggerState.appNameLen = strlen(appName);
-	if ((loggerState.appNameLen + 53) > LINE_1_MAX) {
-		loggerState.appNameLen = LINE_1_MAX - 53;
-	}
-	loggerState.appName = malloc(loggerState.appNameLen + 1);
-	if (loggerState.appName == NULL) {
-		return(1);
-	}
-	strncpy((char *)loggerState.appName, (char *)appName, loggerState.appNameLen);
-	return(0);
-}
+LOGGER *logger_init(LOGGER_LEVELS level, const char *app_name) 
+{
+    int len;
+    LOGGER *logger = NULL;
+    
+    if (app_name == NULL) {
+        app_name = "unknown";
+    }
+    len = strlen(app_name);
 
+    if (len >= LOGGER_LINE_MAX_SIZE - LOGGER_LINE_MIN_SIZE) {
+        return NULL;
+    }
+    if ((logger = malloc(sizeof(LOGGER) + LOGGER_LINE_MAX_SIZE + len + 1)) == NULL) {
+        return NULL;
+    }
 
-/*
- * cleanup resources
- */
-void loggerCleanup(void) {
-	if (loggerState.appName != NULL) {
-		free((char *)loggerState.appName);
-	}
+	memset(logger, 0, sizeof(LOGGER) + LOGGER_LINE_MAX_SIZE + len + 1);
+	logger->log_level = level;
+	logger->pid = getpid();
+    logger->tid = syscall(__NR_gettid);
+	logger->app_name_len = len;
+    logger->app_name = (char *)logger + sizeof(LOGGER);
+    logger->buffer = (char *)logger + sizeof(LOGGER) + len + 1;
+
+	strncpy((char *)logger->app_name, (char *)app_name, len);
+	return logger;
 }
 
 
 /*
  * write a log entry
  */
-void loggerWrite(short int level, const char *sourceName, const int lineNumber, const char *format, ...) {
-	char line1[LINE_1_MAX];
-	char line2[LINE_2_MAX];
+void logger_write(LOGGER *logger, LOGGER_LEVELS level, const char *source_name, const int line_number, const char *format, ...) 
+{
 	va_list ap;
-	time_t rawTime;
+	time_t raw_time;
 	struct tm tm;
-	struct tm *tmPtr = &tm;
-	time(&rawTime);
-	gmtime_r(&rawTime, tmPtr);
+	struct tm *tm_ptr = &tm;
+    int len;
+
+	time(&raw_time);
+	gmtime_r(&raw_time, tm_ptr);
 	va_start(ap, format);
-	if ((strlen(sourceName) + loggerState.appNameLen + 52) > LINE_1_MAX) {
-		sourceName = "";
-	}
-	snprintf(line1, LINE_1_MAX, "%04i-%02i-%02i %02i:%02i:%02i  %s  %05u  %08lx  %s  %i  %s  ", tmPtr->tm_year + 1900, tmPtr->tm_mon + 1, tmPtr->tm_mday, tmPtr->tm_hour, tmPtr->tm_min, tmPtr->tm_sec, loggerState.appName, loggerState.pid, (long unsigned int)pthread_self(), sourceName, lineNumber, LEVELS[level]);
-	vsnprintf(line2, LINE_2_MAX, format, ap);
-	fprintf(stdout, "%s%s\n", line1, line2);
+	len = snprintf(logger->buffer, LOGGER_LINE_MAX_SIZE, "%04i-%02i-%02i %02i:%02i:%02i  %s  %05u  %04x  %s  %i  %s  ", tm_ptr->tm_year + 1900, tm_ptr->tm_mon + 1, tm_ptr->tm_mday, tm_ptr->tm_hour, tm_ptr->tm_min, tm_ptr->tm_sec, logger->app_name, logger->pid, logger->tid, source_name, line_number, LEVELS[level]);
+	len += vsnprintf(logger->buffer + len, LOGGER_LINE_MAX_SIZE - len, format, ap);
+    if (len < LOGGER_LINE_MAX_SIZE - 1) {
+        logger->buffer[len++] = '\n';
+        logger->buffer[len++] = 0;
+    }
+    fputs(logger->buffer, stdout);
 	va_end(ap);
 }
+

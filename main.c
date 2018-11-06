@@ -4,16 +4,19 @@
 #include "logger.h"
 
 
+LOGGER *logger;
+
+
 int main(int ac, char **av) {
-	if (loggerInit(LOGGER_TRACE, "test")) {
+	if (!(logger = logger_init(LOGGER_TRACE, "test"))) {
 		printf("unable to initialize logger\n");
 		goto term;
 	}
 
-	loggerInfo("starting up...");
-	loggerInfo("initializing...");
-	loggerInfo("lol");
+	logger_info(logger, "starting up...");
+	logger_info(logger, "initializing...");
+	logger_info(logger, "lol");
 term:
-	loggerInfo("terminating...");
-	loggerCleanup();
+	logger_info(logger, "terminating...");
+	logger_cleanup(logger);
 }
